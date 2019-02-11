@@ -1,9 +1,8 @@
-package main
+package justworks
 
 import (
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -14,30 +13,36 @@ import (
 )
 
 type Event struct {
-	summary, eventType string
-	startDate, endDate time.Time
+	summary, eventType, name string
+	startDate, endDate       time.Time
 }
 
-type EventsSorted struct {
-	eventType string
-	events    []Event
+func (ev *Event) StartDate() time.Time {
+	return ev.startDate
 }
 
-var envVars = map[string]string{}
+func (ev *Event) EndDate() time.Time {
+	return ev.endDate
+}
 
-func AddAndValidateEnvVars() {
-	envVars["JustWorksUrl"] = os.Getenv("JustWorksUrl")
-	fmt.Println("Env", envVars)
+func (ev *Event) Summary() string {
+	return ev.summary
+}
 
-	for k := range envVars {
-		if envVars[k] == "" {
-			log.Fatal(fmt.Sprintf("$%s must be set", k))
-		}
-	}
+func (ev *Event) EventType() string {
+	return ev.eventType
+}
+
+func (ev *Event) Name() string {
+	return ev.name
 }
 
 func (ev *Event) setType(evType string) {
 	ev.eventType = evType
+}
+
+func (ev *Event) setNameInEvent(name string) {
+	ev.name = name
 }
 
 func formatDate(t time.Time) string {
@@ -53,9 +58,18 @@ func formatDate(t time.Time) string {
 	return t.Format("Monday, January 2" + suffix)
 }
 
-func createPTOText(event Event) (string, error) {
+func getNameFromEventSummary(eventSummary string, eventType string) (string, error) {
 	reLeadcloseWhtsp := regexp.MustCompile(`^[\s\p{Zs}]+|[\s\p{Zs}]+$`)
 	reInsideWhtsp := regexp.MustCompile(`[\s\p{Zs}]{2,}`)
+	eventTypeString := fmt.Sprintf("(%s)", eventType)
+	strippedMessage := strings.Replace(eventSummary, "PTO", "", -1)
+	strippedMessage = strings.Replace(strippedMessage, eventTypeString, "", -1)
+	strippedMessage = reLeadcloseWhtsp.ReplaceAllString(strippedMessage, "")
+	strippedMessage = reInsideWhtsp.ReplaceAllString(strippedMessage, "")
+	return strippedMessage, nil
+}
+
+func createPTOText(event Event) (string, error) {
 	startDateFormatted := formatDate(event.startDate)
 	endDateFormatted := formatDate(event.endDate)
 	dateSuffix := fmt.Sprintf("till %s", endDateFormatted)
@@ -63,25 +77,21 @@ func createPTOText(event Event) (string, error) {
 		dateSuffix = "and starts again after the weekend."
 	}
 
-	dateMessage := fmt.Sprintf(" from %s %s", startDateFormatted, dateSuffix)
-	strippedMessage := strings.Replace(event.summary, "PTO", "", -1)
-	eventTypeString := fmt.Sprintf("(%s)", event.eventType)
-	strippedMessage = strings.Replace(strippedMessage, eventTypeString, "", -1)
-	strippedMessage = reLeadcloseWhtsp.ReplaceAllString(strippedMessage, "")
-	strippedMessage = reInsideWhtsp.ReplaceAllString(strippedMessage, " ")
-	message := fmt.Sprintf("- %s %s\n", strippedMessage, dateMessage)
+	dateMessage := fmt.Sprintf("from %s %s", startDateFormatted, dateSuffix)
+	message := fmt.Sprintf("- %s %s\n", event.name, dateMessage)
 	return message, nil
 }
 
 func getEventEmoji(eventType string) (string, error) {
-	emojiesMapping := map[string]string{"Vacation": ":palm_tree:", "Working Remotely": ":house_with_garden:"}
+	emojiesMapping := map[string]string{"Vacation": ":palm_tree:", "Working Remotely": ":house_with_garden:",
+		"Casual Leave - Noida Team Only": ":beach_with_umbrella:"}
 	if val, ok := emojiesMapping[eventType]; ok {
 		return val, nil
 	}
 	return "", nil
 }
 
-func createEventMessage(sortedEventsList map[string][]Event) (string, error) {
+func CreateEventMessage(sortedEventsList map[string][]Event) (string, error) {
 	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. next week:"
 	for key, val := range sortedEventsList {
 		emoji, _ := getEventEmoji(key)
@@ -96,13 +106,21 @@ func createEventMessage(sortedEventsList map[string][]Event) (string, error) {
 	return messaging, nil
 }
 
-func sortCalenderItems(events []Event) (map[string][]Event, error) {
+func setTypeNameOfEvent(events []Event) ([]Event, error) {
 	re := regexp.MustCompile(`\((.*?)\)`)
-	sortedEvents := make(map[string][]Event)
 	for index := range events {
 		split := re.FindStringSubmatch(events[index].summary)
-		events[index].setType(split[1])
+		eventType := split[1]
+		summary := events[index].summary
+		name, _ := getNameFromEventSummary(summary, eventType)
+		events[index].setType(eventType)
+		events[index].setNameInEvent(name)
 	}
+	return events, nil
+}
+
+func SortCalenderItems(events []Event) (map[string][]Event, error) {
+	sortedEvents := make(map[string][]Event)
 	for _, ev := range events {
 		if val, ok := sortedEvents[ev.eventType]; ok {
 			sortedEvents[ev.eventType] = append(val, ev)
@@ -113,12 +131,13 @@ func sortCalenderItems(events []Event) (map[string][]Event, error) {
 	return sortedEvents, nil
 }
 
-func getByDateRange(fromDate time.Time, toDate time.Time) (string, error) {
+func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]string) ([]Event, error) {
 	fmt.Println("DateRange")
+	var eventsList []Event
 	out, err := os.Create("/tmp/justWorksCal.ics")
 	if err != nil {
 		fmt.Println("Error in creating calender file")
-		return "Test", err
+		return eventsList, err
 	}
 	defer out.Close()
 
@@ -127,7 +146,7 @@ func getByDateRange(fromDate time.Time, toDate time.Time) (string, error) {
 	resp, err := http.Get(envVars["JustWorksUrl"])
 	if err != nil {
 		fmt.Println("Error in fetching calender")
-		return "Test", err
+		return eventsList, err
 	}
 	defer resp.Body.Close()
 
@@ -137,16 +156,18 @@ func getByDateRange(fromDate time.Time, toDate time.Time) (string, error) {
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		fmt.Println("Error in saving calender file")
-		return "Test", err
+		return eventsList, err
 	}
 
 	fmt.Println("DateRange File Saved")
 
 	p := ical.NewParser()
 	c, err := p.ParseFile("/tmp/justWorksCal.ics")
-	fmt.Println("Testing", c, err)
+	if err != nil {
+		fmt.Println("Error", err)
+		return eventsList, err
+	}
 
-	var eventsList []Event
 	for e := range c.Entries() {
 		ev, ok := e.(*ical.Event)
 		if !ok {
@@ -176,32 +197,12 @@ func getByDateRange(fromDate time.Time, toDate time.Time) (string, error) {
 			continue
 		}
 
-		if prop2Time.After(fromDate) && prop3Time.Before(toDate) {
+		if prop2Time.After(fromDate) && prop2Time.Before(toDate) {
 			event := Event{summary: prop.RawValue(), startDate: prop2Time, endDate: prop3Time}
 			eventsList = append(eventsList, event)
 		}
 	}
-	fmt.Println("Dates", fromDate, toDate)
 
-	fmt.Println("DateRange Parsed", err)
-	sortedEventsList, _ := sortCalenderItems(eventsList)
-	fmt.Println("Events List", sortedEventsList)
-	message, err := createEventMessage(sortedEventsList)
-	if err != nil {
-		fmt.Println("Error", err)
-	} else {
-		fmt.Println("message", message)
-	}
-
-	return message, nil
-}
-
-func main() {
-	AddAndValidateEnvVars()
-	start := time.Now()
-	start = start.Add(time.Duration(8-int(start.Weekday())) * 24 * time.Hour)
-	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
-	end := start.Add(6 * 24 * time.Hour)
-	message, _ := getByDateRange(start, end)
-	fmt.Println("Final Message", message)
+	eventsList, _ = setTypeNameOfEvent(eventsList)
+	return eventsList, nil
 }
