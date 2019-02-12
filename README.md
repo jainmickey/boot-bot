@@ -22,6 +22,10 @@ To run:
 ```
 go get github.com/lestrrat-go/ical
 export JustWorksUrl={Url}
-go build -o justworks justworks.go
-./justworks
+ForeCastApiToken={Token}
+ForeCastApiAccountId={Account id}
+ForeCastApiTimeOffProjectID={Time off project id}
+SlackWebhookURL={Webhook Url}
+go build -o integration integration.go
+./integration
 ```
