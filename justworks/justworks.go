@@ -132,8 +132,11 @@ func SortCalenderItems(events []Event) (map[string][]Event, error) {
 }
 
 func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]string) ([]Event, error) {
-	fmt.Println("DateRange")
 	var eventsList []Event
+	_, err := os.Stat("/tmp/justWorksCal.ics")
+	if err == nil {
+		os.Remove("/tmp/justWorksCal.ics")
+	}
 	out, err := os.Create("/tmp/justWorksCal.ics")
 	if err != nil {
 		fmt.Println("Error in creating calender file")
@@ -141,7 +144,7 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 	}
 	defer out.Close()
 
-	fmt.Println("DateRange Dir Created")
+	fmt.Println("Justworks File Created!")
 
 	resp, err := http.Get(envVars["JustWorksUrl"])
 	if err != nil {
@@ -150,7 +153,7 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 	}
 	defer resp.Body.Close()
 
-	fmt.Println("DateRange File Fetched")
+	fmt.Println("Justworks File Fetched")
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
@@ -159,7 +162,7 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 		return eventsList, err
 	}
 
-	fmt.Println("DateRange File Saved")
+	fmt.Println("Justworks File Saved")
 
 	p := ical.NewParser()
 	c, err := p.ParseFile("/tmp/justWorksCal.ics")

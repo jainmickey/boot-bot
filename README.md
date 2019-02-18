@@ -29,3 +29,20 @@ SlackWebhookURL={Webhook Url}
 go build -o integration integration.go
 ./integration
 ```
+
+## Note
+
+- No Forecast api available, for the time being:
+  ```
+  You will need a Forecast account, accountId and authorization token.
+
+  The easiest way to determine your accountId and authorization token is by logging in to Forecast from Google Chrome and using the web inspector > Network tab to see one of the request(s) being made.
+
+  Observe a request and note the accoundId and authorization from the request header.
+
+  Set Environment variables: ForeCastApiToken, ForeCastApiAccountId, ForeCastApiTimeOffProjectID
+  ```
+- Justworks data fetched in the form of `ics` file. It requires justworks account `ical` url. Set it in the environment variable `JustWorksUrl`. This url changes time to time. Need to add error handler to notify about this.
+- Slack integration can be setup using webhook url in environment variable `SlackWebhookURL`
+- To deploy build for linux instead of osx. It can be easily done using command:
+  `GOARCH=amd64 GOOS=linux go build -o integration integration.go`
