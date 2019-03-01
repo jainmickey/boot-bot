@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/jainmickey/justworks_integration/justworks"
 )
@@ -77,23 +78,30 @@ func (fp *ForecastPerson) setEvent(event justworks.Event) {
 }
 
 func CreateProjectAssignmentForecast(forecastPeople []ForecastPerson, envVars map[string]string) {
-	fmt.Println("Forecast Assignment")
 	dateLayout := "2006-01-02"
 	assignmentURL := fmt.Sprintf("%s/assignments", envVars["ForeCastApiUrl"])
 	client := &http.Client{}
 	for _, fp := range forecastPeople {
+		endDate := fp.event.EndDate()
+		if int(endDate.Weekday()) == 0 {
+			endDate = endDate.Add(time.Duration(-2 * 24 * time.Hour))
+		} else if int(endDate.Weekday()) == 6 {
+			endDate = endDate.Add(time.Duration(-1 * 24 * time.Hour))
+		}
 		var jsonStr = []byte(fmt.Sprintf(`{"assignment":{"start_date":"%s","end_date":"%s","allocation":null,"active_on_days_off":false,
 										 "repeated_assignment_set_id":null, "project_id":"%s","person_id":"%d","placeholder_id":null}}`,
-			fp.event.StartDate().Format(dateLayout), fp.event.EndDate().Format(dateLayout), envVars["ForeCastApiTimeOffProjectID"], fp.id))
+			fp.event.StartDate().Format(dateLayout), endDate.Format(dateLayout), envVars["ForeCastApiTimeOffProjectID"], fp.id))
 		req, _ := http.NewRequest("POST", assignmentURL, bytes.NewBuffer(jsonStr))
 		req.Header.Add("authorization", fmt.Sprintf("Bearer %s", envVars["ForeCastApiToken"]))
 		req.Header.Add("forecast-account-id", envVars["ForeCastApiAccountId"])
 		req.Header.Add("content-type", "application/json; charset=UTF-8")
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Println("Error in fetching Forecast People", err)
+			fmt.Println("Error in Forecast Assignment", err)
 		}
 		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		fmt.Println("Assignment Response", fp.email, string(body))
 	}
 }
 
