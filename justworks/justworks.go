@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -110,22 +111,27 @@ func setTypeNameOfEvent(events []Event) ([]Event, error) {
 	re := regexp.MustCompile(`\((.*?)\)`)
 	for index := range events {
 		split := re.FindStringSubmatch(events[index].summary)
-		eventType := split[1]
-		summary := events[index].summary
-		name, _ := getNameFromEventSummary(summary, eventType)
-		events[index].setType(eventType)
-		events[index].setNameInEvent(name)
+		if len(split) > 1 {
+			eventType := split[1]
+			summary := events[index].summary
+			name, _ := getNameFromEventSummary(summary, eventType)
+			events[index].setType(eventType)
+			events[index].setNameInEvent(name)
+		}
 	}
 	return events, nil
 }
 
 func SortCalenderItems(events []Event) (map[string][]Event, error) {
 	sortedEvents := make(map[string][]Event)
+	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only"}
 	for _, ev := range events {
-		if val, ok := sortedEvents[ev.eventType]; ok {
-			sortedEvents[ev.eventType] = append(val, ev)
-		} else {
-			sortedEvents[ev.eventType] = []Event{ev}
+		if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
+			if val, ok := sortedEvents[ev.eventType]; ok {
+				sortedEvents[ev.eventType] = append(val, ev)
+			} else {
+				sortedEvents[ev.eventType] = []Event{ev}
+			}
 		}
 	}
 	return sortedEvents, nil
