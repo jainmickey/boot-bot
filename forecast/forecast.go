@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jainmickey/justworks_integration/justworks"
+	"github.com/jainmickey/justworks_integration/utils"
 )
 
 type ForecastPerson struct {
@@ -17,8 +18,17 @@ type ForecastPerson struct {
 	admin, archived, subscribed, colorBlind            bool
 	avatarURL, updatedAt                               string
 	workingDays                                        map[string]bool
-	roles                                              []string
+	roles                                              []interface{}
 	event                                              justworks.Event
+}
+
+func CheckProductOrAccountPerson(person ForecastPerson) bool {
+	if person.login == "enabled" {
+		if utils.Contains(person.roles, []string{"Product", "Accounts"}) == true {
+			return true
+		}
+	}
+	return false
 }
 
 func (fp *ForecastPerson) setUpdatedByID(updatedByID float64) {
@@ -73,6 +83,10 @@ func (fp *ForecastPerson) setColorBlind(colorBlind bool) {
 	fp.colorBlind = colorBlind
 }
 
+func (fp *ForecastPerson) setRoles(roles []interface{}) {
+	fp.roles = roles
+}
+
 func (fp *ForecastPerson) setEvent(event justworks.Event) {
 	fp.event = event
 }
@@ -95,6 +109,7 @@ func CreateProjectAssignmentForecast(forecastPeople []ForecastPerson, envVars ma
 		req.Header.Add("authorization", fmt.Sprintf("Bearer %s", envVars["ForeCastApiToken"]))
 		req.Header.Add("forecast-account-id", envVars["ForeCastApiAccountId"])
 		req.Header.Add("content-type", "application/json; charset=UTF-8")
+		fmt.Println("Requesting Forecast!!", req)
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Println("Error in Forecast Assignment", err)
@@ -106,7 +121,7 @@ func CreateProjectAssignmentForecast(forecastPeople []ForecastPerson, envVars ma
 }
 
 func FilterForcastPeople(forcastPeople []ForecastPerson, filteredEvents []justworks.Event) ([]ForecastPerson, error) {
-	var filteredForevastPeople []ForecastPerson
+	var filteredForecastPeople []ForecastPerson
 	vacation := "Vacation"
 	casualLeave := "Casual Leave - Noida Team Only"
 	for _, ev := range filteredEvents {
@@ -114,11 +129,25 @@ func FilterForcastPeople(forcastPeople []ForecastPerson, filteredEvents []justwo
 			fpName := fmt.Sprintf("%s %c.", fp.firstName, fp.lastName[0])
 			if (fpName == ev.Name()) && ((ev.EventType() == vacation) || (ev.EventType() == casualLeave)) {
 				fp.setEvent(ev)
-				filteredForevastPeople = append(filteredForevastPeople, fp)
+				filteredForecastPeople = append(filteredForecastPeople, fp)
 			}
 		}
 	}
-	return filteredForevastPeople, nil
+	return filteredForecastPeople, nil
+}
+
+func FilterEventsForProductAndAccountsPeople(forcastPeople []ForecastPerson, events []justworks.Event) ([]justworks.Event, error) {
+	var filteredEvents []justworks.Event
+	for _, ev := range events {
+		for _, fp := range forcastPeople {
+			fpName := fmt.Sprintf("%s %c.", fp.firstName, fp.lastName[0])
+			if CheckProductOrAccountPerson(fp) == true && fpName == ev.Name() {
+				fp.setEvent(ev)
+				filteredEvents = append(filteredEvents, ev)
+			}
+		}
+	}
+	return filteredEvents, nil
 }
 
 func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, error) {
@@ -146,6 +175,10 @@ func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, 
 			id: int(raw["people"][index]["id"].(float64)),
 			// roles:               raw["people"][index]["roles"].([]string),
 			// workingDays:         raw["people"][index]["working_days"].(map[string]bool),
+		}
+		roles := raw["people"][index]["roles"]
+		if roles != nil {
+			person.setRoles(roles.([]interface{}))
 		}
 		updatedByID := raw["people"][index]["updated_by_id"]
 		if updatedByID != nil {

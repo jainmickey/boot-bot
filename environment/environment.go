@@ -21,6 +21,8 @@ func GetEnvironmentVars() (map[string]string, error) {
 	envVars["ForeCastApiAccountId"] = getEnvWithDefault("ForeCastApiAccountId", "")
 	envVars["ForeCastApiTimeOffProjectID"] = getEnvWithDefault("ForeCastApiTimeOffProjectID", "")
 	envVars["SlackWebhookURL"] = getEnvWithDefault("SlackWebhookURL", "")
+	envVars["ProductAndAccountSlackWebhookURL"] = getEnvWithDefault("ProductAndAccountSlackWebhookURL", "")
+	envVars["AWS_STORAGE_BUCKET_NAME"] = getEnvWithDefault("AWS_STORAGE_BUCKET_NAME", "")
 	fmt.Println("Env", envVars)
 
 	for k := range envVars {

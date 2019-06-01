@@ -1,6 +1,7 @@
 package justworks
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -73,41 +74,69 @@ func getNameFromEventSummary(eventSummary string, eventType string) (string, err
 func createPTOText(event Event) (string, error) {
 	startDateFormatted := formatDate(event.startDate)
 	endDateFormatted := formatDate(event.endDate)
+	duration := event.endDate.Sub(event.startDate).Hours()
 	dateSuffix := fmt.Sprintf("till %s", endDateFormatted)
-	if int(event.endDate.Weekday()) >= 5 && int(event.endDate.Sub(event.startDate).Hours()/24) < 7 {
+	if int(event.endDate.Weekday()) >= 5 && int(duration/24) < 7 {
 		dateSuffix = "and starts again after the weekend."
 	}
 
 	dateMessage := fmt.Sprintf("from %s %s", startDateFormatted, dateSuffix)
+	if int(duration) < 25 {
+		dateMessage = fmt.Sprintf("on %s", startDateFormatted)
+	}
 	message := fmt.Sprintf("- %s %s\n", event.name, dateMessage)
 	return message, nil
 }
 
 func getEventEmoji(eventType string) (string, error) {
 	emojiesMapping := map[string]string{"Vacation": ":palm_tree:", "Working Remotely": ":house_with_garden:",
-		"Casual Leave - Noida Team Only": ":beach_with_umbrella:"}
+		"Casual Leave - Noida Team Only": ":beach_with_umbrella:", "Sick Leave": ":face_with_thermometer:",
+		"Working from Home (Same Timezone": ":house_with_garden:"}
 	if val, ok := emojiesMapping[eventType]; ok {
 		return val, nil
 	}
-	return "", nil
+	errorMessage := fmt.Sprintf("Emoji for %s doesn't exists!", eventType)
+	return "", errors.New(errorMessage)
 }
 
 func CreateEventMessage(sortedEventsList map[string][]Event) (string, error) {
-	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. next week:"
+	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. this week"
 	for key, val := range sortedEventsList {
-		emoji, _ := getEventEmoji(key)
-		message := fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
-		for _, ev := range val {
-			fmt.Println("Event", ev.startDate, ev.endDate)
-			ptoText, _ := createPTOText(ev)
-			message = fmt.Sprintf("%s%s", message, ptoText)
+		fmt.Println("Emoji", key)
+		emoji, err := getEventEmoji(key)
+		if err == nil {
+			message := fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
+			for _, ev := range val {
+				fmt.Println("Event", ev.summary, ev.startDate, ev.endDate)
+				ptoText, _ := createPTOText(ev)
+				message = fmt.Sprintf("%s%s", message, ptoText)
+			}
+			messaging = fmt.Sprintf("%s%s", messaging, message)
 		}
-		messaging = fmt.Sprintf("%s%s", messaging, message)
+	}
+	return messaging, nil
+}
+
+func CreateProductAndAccountMessage(sortedEventsList map[string][]Event) (string, error) {
+	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. in Product and Accounts team today:"
+	for key, val := range sortedEventsList {
+		fmt.Println("Emoji", key)
+		emoji, err := getEventEmoji(key)
+		if err == nil {
+			message := fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
+			for _, ev := range val {
+				fmt.Println("Event", ev.summary, ev.startDate, ev.endDate)
+				ptoText, _ := createPTOText(ev)
+				message = fmt.Sprintf("%s%s", message, ptoText)
+			}
+			messaging = fmt.Sprintf("%s%s", messaging, message)
+		}
 	}
 	return messaging, nil
 }
 
 func setTypeNameOfEvent(events []Event) ([]Event, error) {
+	// re := regexp.MustCompile(`\((.*?)\)`)
 	re := regexp.MustCompile(`\((.*?)\)`)
 	for index := range events {
 		split := re.FindStringSubmatch(events[index].summary)
@@ -124,21 +153,23 @@ func setTypeNameOfEvent(events []Event) ([]Event, error) {
 
 func SortCalenderItems(events []Event) (map[string][]Event, error) {
 	sortedEvents := make(map[string][]Event)
-	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only"}
+	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only",
+		"Sick Leave", "Working from home (Same Timezone"}
 	for _, ev := range events {
-		if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
-			if val, ok := sortedEvents[ev.eventType]; ok {
-				sortedEvents[ev.eventType] = append(val, ev)
-			} else {
-				sortedEvents[ev.eventType] = []Event{ev}
+		if len(ev.eventType) > 0 {
+			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
+				if val, ok := sortedEvents[ev.eventType]; ok {
+					sortedEvents[ev.eventType] = append(val, ev)
+				} else {
+					sortedEvents[ev.eventType] = []Event{ev}
+				}
 			}
 		}
 	}
 	return sortedEvents, nil
 }
 
-func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]string) ([]Event, error) {
-	var eventsList []Event
+func DownloadJustWorksFile(envVars map[string]string) (bool, error) {
 	_, err := os.Stat("/tmp/justWorksCal.ics")
 	if err == nil {
 		os.Remove("/tmp/justWorksCal.ics")
@@ -146,7 +177,7 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 	out, err := os.Create("/tmp/justWorksCal.ics")
 	if err != nil {
 		fmt.Println("Error in creating calender file")
-		return eventsList, err
+		return false, err
 	}
 	defer out.Close()
 
@@ -155,7 +186,7 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 	resp, err := http.Get(envVars["JustWorksUrl"])
 	if err != nil {
 		fmt.Println("Error in fetching calender")
-		return eventsList, err
+		return false, err
 	}
 	defer resp.Body.Close()
 
@@ -165,10 +196,15 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		fmt.Println("Error in saving calender file")
-		return eventsList, err
+		return false, err
 	}
 
 	fmt.Println("Justworks File Saved")
+	return true, nil
+}
+
+func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]string) ([]Event, error) {
+	var eventsList []Event
 
 	p := ical.NewParser()
 	c, err := p.ParseFile("/tmp/justWorksCal.ics")
@@ -214,4 +250,134 @@ func GetByDateRange(fromDate time.Time, toDate time.Time, envVars map[string]str
 
 	eventsList, _ = setTypeNameOfEvent(eventsList)
 	return eventsList, nil
+}
+
+func GetByStartDate(fromDate time.Time, envVars map[string]string) ([]Event, error) {
+	var eventsList []Event
+
+	p := ical.NewParser()
+	c, err := p.ParseFile("/tmp/justWorksCal.ics")
+	if err != nil {
+		fmt.Println("Error", err)
+		return eventsList, err
+	}
+
+	for e := range c.Entries() {
+		ev, ok := e.(*ical.Event)
+		if !ok {
+			continue
+		}
+
+		layout := "20060102T000000"
+		prop, ok := ev.GetProperty("summary")
+		if !ok {
+			continue
+		}
+		prop2, ok := ev.GetProperty("dtstart")
+		if !ok {
+			continue
+		}
+		prop2Time, err := time.Parse(layout, prop2.RawValue())
+		if err != nil {
+			fmt.Println("Error", err)
+			continue
+		}
+		prop3, ok := ev.GetProperty("dtend")
+		if !ok {
+			continue
+		}
+		prop3Time, err := time.Parse(layout, prop3.RawValue())
+		if err != nil {
+			continue
+		}
+
+		if prop2Time.After(fromDate) {
+			event := Event{summary: prop.RawValue(), startDate: prop2Time, endDate: prop3Time}
+			eventsList = append(eventsList, event)
+		}
+	}
+
+	eventsList, _ = setTypeNameOfEvent(eventsList)
+	return eventsList, nil
+}
+
+func GetTodaysEvents(envVars map[string]string) ([]Event, error) {
+	var eventsList []Event
+	start := time.Now().UTC()
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	startAMinuteBefore := start.Add(-1 * time.Minute)
+	end := start.Add(24 * time.Hour)
+
+	p := ical.NewParser()
+	c, err := p.ParseFile("/tmp/justWorksCal.ics")
+	if err != nil {
+		fmt.Println("Error", err)
+		return eventsList, err
+	}
+
+	for e := range c.Entries() {
+		ev, ok := e.(*ical.Event)
+		if !ok {
+			continue
+		}
+
+		layout := "20060102T000000"
+		prop, ok := ev.GetProperty("summary")
+		if !ok {
+			continue
+		}
+		prop2, ok := ev.GetProperty("dtstart")
+		if !ok {
+			continue
+		}
+		prop2Time, err := time.Parse(layout, prop2.RawValue())
+		if err != nil {
+			fmt.Println("Error", err)
+			continue
+		}
+		prop3, ok := ev.GetProperty("dtend")
+		if !ok {
+			continue
+		}
+		prop3Time, err := time.Parse(layout, prop3.RawValue())
+		if err != nil {
+			continue
+		}
+
+		if (prop2Time.After(startAMinuteBefore) && prop2Time.Before(end)) || (prop2Time.Before(startAMinuteBefore) && prop3Time.After(end)) ||
+			(prop3Time.After(start) && prop3Time.Before(end)) {
+			event := Event{summary: prop.RawValue(), startDate: prop2Time, endDate: prop3Time}
+			eventsList = append(eventsList, event)
+		}
+	}
+
+	eventsList, _ = setTypeNameOfEvent(eventsList)
+	return eventsList, nil
+}
+
+func FilterEventsForVacation(events []Event) ([]Event, error) {
+	var filteredEventsList []Event
+	availableTypes := []string{"Vacation", "Casual Leave - Noida Team Only", "Sick Leave"}
+	for _, ev := range events {
+		if len(ev.eventType) > 0 {
+			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
+				filteredEventsList = append(filteredEventsList, ev)
+			}
+		}
+	}
+	return filteredEventsList, nil
+}
+
+func FilterEventsForVacationAndRemote(events []Event) ([]Event, error) {
+	var filteredEventsList []Event
+	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only",
+		"Sick Leave", "Working from home (Same Timezone"}
+	for _, ev := range events {
+		if len(ev.eventType) > 0 {
+			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
+				filteredEventsList = append(filteredEventsList, ev)
+			}
+		}
+	}
+	return filteredEventsList, nil
 }
