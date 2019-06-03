@@ -23,6 +23,12 @@ func GetEnvironmentVars() (map[string]string, error) {
 	envVars["SlackWebhookURL"] = getEnvWithDefault("SlackWebhookURL", "")
 	envVars["ProductAndAccountSlackWebhookURL"] = getEnvWithDefault("ProductAndAccountSlackWebhookURL", "")
 	envVars["AWS_STORAGE_BUCKET_NAME"] = getEnvWithDefault("AWS_STORAGE_BUCKET_NAME", "")
+	envVars["DefaultFromEmail"] = getEnvWithDefault("DefaultFromEmail", "")
+	envVars["AdminEmail"] = getEnvWithDefault("AdminEmail", "backend@fueled.com")
+	envVars["EmailHost"] = getEnvWithDefault("EmailHost", "")
+	envVars["EmailHostPassword"] = getEnvWithDefault("EmailHostPassword", "")
+	envVars["EmailHostUser"] = getEnvWithDefault("EmailHostUser", "")
+	envVars["EmailPort"] = getEnvWithDefault("EmailPort", "")
 	fmt.Println("Env", envVars)
 
 	for k := range envVars {

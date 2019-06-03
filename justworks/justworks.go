@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jainmickey/justworks_integration/ses"
 	"github.com/lestrrat-go/ical"
 )
 
@@ -186,6 +187,9 @@ func DownloadJustWorksFile(envVars map[string]string) (bool, error) {
 	resp, err := http.Get(envVars["JustWorksUrl"])
 	if err != nil {
 		fmt.Println("Error in fetching calender")
+		emailSubject := "Error in Justworks Integration"
+		emailBody := fmt.Sprintf("Justworks link expired: %s", err)
+		ses.SendEmailSMTP(envVars["DefaultFromEmail"], envVars["AdminEmail"], emailSubject, emailBody, envVars)
 		return false, err
 	}
 	defer resp.Body.Close()

@@ -146,7 +146,6 @@ func HandleLambdaEvent() (string, error) {
 		dailyForecast(envVars)
 	}
 	return "Executed Successfully!", nil
-	// return message, nil
 }
 
 func main() {

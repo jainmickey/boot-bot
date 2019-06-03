@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jainmickey/justworks_integration/justworks"
+	"github.com/jainmickey/justworks_integration/ses"
 	"github.com/jainmickey/justworks_integration/utils"
 )
 
@@ -163,18 +164,18 @@ func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, 
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Println("Error in fetching Forecast People", err)
+		emailSubject := "Error in Forecast Integration"
+		emailBody := fmt.Sprintf("Forecast token expired: %s", err)
+		ses.SendEmailSMTP(envVars["DefaultFromEmail"], envVars["AdminEmail"], emailSubject, emailBody, envVars)
 		return forcastPeople, nil
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	// fmt.Println("Body", string(body))
 	var raw map[string][]map[string]interface{}
 	json.Unmarshal([]byte(body), &raw)
 	for index := range raw["people"] {
 		person := ForecastPerson{
 			id: int(raw["people"][index]["id"].(float64)),
-			// roles:               raw["people"][index]["roles"].([]string),
-			// workingDays:         raw["people"][index]["working_days"].(map[string]bool),
 		}
 		roles := raw["people"][index]["roles"]
 		if roles != nil {
