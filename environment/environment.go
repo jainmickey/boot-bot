@@ -29,7 +29,6 @@ func GetEnvironmentVars() (map[string]string, error) {
 	envVars["EmailHostPassword"] = getEnvWithDefault("EmailHostPassword", "")
 	envVars["EmailHostUser"] = getEnvWithDefault("EmailHostUser", "")
 	envVars["EmailPort"] = getEnvWithDefault("EmailPort", "")
-	fmt.Println("Env", envVars)
 
 	for k := range envVars {
 		if envVars[k] == "" {

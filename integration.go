@@ -16,13 +16,12 @@ import (
 )
 
 type GlobalState struct {
-	DailyRunTime  time.Time `json:"daily_run_time"`
-	WeeklyRunTime time.Time `json:"weekly_run_time"`
+	DailyRunTime time.Time `json:"daily_run_time"`
+	// WeeklyRunTime time.Time `json:"weekly_run_time"`
 }
 
 func readGlobalStateFile(filename string) (GlobalState, error) {
 	file, _ := ioutil.ReadFile(filename)
-	fmt.Println("Testing", file)
 
 	data := GlobalState{}
 	var rawStrings map[string]string
@@ -40,14 +39,15 @@ func readGlobalStateFile(filename string) (GlobalState, error) {
 	}
 	data.DailyRunTime = dailyTime
 
-	weeklyTime, err := time.Parse(time.RFC3339, rawStrings["weekly_run_time"])
-	if err != nil {
-		fmt.Println("Error in time parsing: ", err)
-		return data, err
-	}
-	data.WeeklyRunTime = weeklyTime
+	// ----- Comment out weekly code -----------------------
+	// weeklyTime, err := time.Parse(time.RFC3339, rawStrings["weekly_run_time"])
+	// if err != nil {
+	// 	fmt.Println("Error in time parsing: ", err)
+	// 	return data, err
+	// }
+	// data.WeeklyRunTime = weeklyTime
 
-	fmt.Println("Time", data.DailyRunTime, data.WeeklyRunTime)
+	fmt.Println("Time", data.DailyRunTime) // , data.WeeklyRunTime)
 	return data, nil
 }
 
@@ -75,14 +75,24 @@ func weeklySlackMessage(envVars map[string]string) {
 
 func dailyProductAccountsSlackMessage(envVars map[string]string) {
 	eventsList, _ := justworks.GetTodaysEvents(envVars)
+	upcomingEventsList, _ := justworks.GetUpcomingEvents(envVars)
 	eventsList, _ = justworks.FilterEventsForVacationAndRemote(eventsList)
+	upcomingEventsList, _ = justworks.FilterEventsForVacationAndRemote(upcomingEventsList)
 	forecastPeople, _ := forecast.GetPeopleDetailsFromForecast(envVars)
-	eventsList, _ = forecast.FilterEventsForProductAndAccountsPeople(forecastPeople, eventsList)
+	eventsList, _, _ = forecast.FilterEventsForProductAndAccountsPeople(forecastPeople, eventsList)
+
+	// --------- Upcoming is for whole team ----------------------------------
+	// upcomingEventsList, _, _ = forecast.FilterEventsForProductAndAccountsPeople(forecastPeople, upcomingEventsList)
 	sortedEventsList, _ := justworks.SortCalenderItems(eventsList)
-	message, _ := justworks.CreateProductAndAccountMessage(sortedEventsList)
-	fmt.Println("Final Message", message)
+	upcomingSortedEventsList, _ := justworks.SortCalenderItems(upcomingEventsList)
+
+	// --------- Bool specify its upcoming message or not -----------------------
+	message, _ := justworks.CreateProductAndAccountMessage(sortedEventsList, false)
+	upcominEventsMessage, _ := justworks.CreateProductAndAccountMessage(upcomingSortedEventsList, true)
+	finalMessage := fmt.Sprintf("\n%s\n\n%s", message, upcominEventsMessage)
+	fmt.Println("Final Message", finalMessage)
 	slackConn := slacknotifier.New(envVars["ProductAndAccountSlackWebhookURL"])
-	slackConn.Notify(message)
+	slackConn.Notify(finalMessage)
 }
 
 func dailyForecast(envVars map[string]string) {
@@ -102,14 +112,16 @@ func HandleLambdaEvent() (string, error) {
 	s3.DownloadFile(envVars["AWS_STORAGE_BUCKET_NAME"], globalStateFile)
 	globalData, err := readGlobalStateFile(globalStateFile)
 	dailyDuration := 0
-	weeklyDuration := 0
+
+	// ---------- Comment out weekly message code --------------------
+	// weeklyDuration := 0
 	if err != nil {
 		globalData.DailyRunTime = time.Now()
-		globalData.WeeklyRunTime = time.Now()
+		// globalData.WeeklyRunTime = time.Now()
 	} else {
 		dailyDuration = int(time.Now().Sub(globalData.DailyRunTime).Hours())
-		weeklyDuration = int(time.Now().Sub(globalData.WeeklyRunTime).Hours())
-		fmt.Println("Duration", dailyDuration, weeklyDuration)
+		// weeklyDuration = int(time.Now().Sub(globalData.WeeklyRunTime).Hours())
+		fmt.Println("Duration", dailyDuration) // , weeklyDuration)
 		if dailyDuration < 23 {
 			fmt.Println("Ran Already!")
 			return "Ran Already!", nil
@@ -121,19 +133,19 @@ func HandleLambdaEvent() (string, error) {
 	if justworksFileStatus == false {
 		fmt.Println("Error in fetching justworks file: ", err)
 	} else {
-		if weeklyDuration == 0 || weeklyDuration > 150 {
-			weeklySlackMessage(envVars)
-			globalData.WeeklyRunTime = time.Now()
-		}
+		// if weeklyDuration == 0 || weeklyDuration > 150 {
+		// 	weeklySlackMessage(envVars)
+		// 	globalData.WeeklyRunTime = time.Now()
+		// }
 		dailyProductAccountsSlackMessage(envVars)
 		globalData.DailyRunTime = time.Now()
 
 		data := struct {
-			DailyRunTime  string `json:"daily_run_time"`
-			WeeklyRunTime string `json:"weekly_run_time"`
+			DailyRunTime string `json:"daily_run_time"`
+			// WeeklyRunTime string `json:"weekly_run_time"`
 		}{
-			DailyRunTime:  globalData.DailyRunTime.Format(time.RFC3339),
-			WeeklyRunTime: globalData.WeeklyRunTime.Format(time.RFC3339),
+			DailyRunTime: globalData.DailyRunTime.Format(time.RFC3339),
+			// WeeklyRunTime: globalData.WeeklyRunTime.Format(time.RFC3339),
 		}
 		file, _ := json.Marshal(data)
 		_ = ioutil.WriteFile(globalStateFile, file, 0777)

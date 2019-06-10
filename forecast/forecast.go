@@ -137,18 +137,23 @@ func FilterForcastPeople(forcastPeople []ForecastPerson, filteredEvents []justwo
 	return filteredForecastPeople, nil
 }
 
-func FilterEventsForProductAndAccountsPeople(forcastPeople []ForecastPerson, events []justworks.Event) ([]justworks.Event, error) {
-	var filteredEvents []justworks.Event
+func FilterEventsForProductAndAccountsPeople(forcastPeople []ForecastPerson, events []justworks.Event) ([]justworks.Event, []justworks.Event, error) {
+	var productAndAccountsEvents []justworks.Event
+	var otherEvents []justworks.Event
 	for _, ev := range events {
 		for _, fp := range forcastPeople {
 			fpName := fmt.Sprintf("%s %c.", fp.firstName, fp.lastName[0])
-			if CheckProductOrAccountPerson(fp) == true && fpName == ev.Name() {
+			if fpName == ev.Name() {
 				fp.setEvent(ev)
-				filteredEvents = append(filteredEvents, ev)
+				if CheckProductOrAccountPerson(fp) == true && fpName == ev.Name() {
+					productAndAccountsEvents = append(productAndAccountsEvents, ev)
+				} else {
+					otherEvents = append(otherEvents, ev)
+				}
 			}
 		}
 	}
-	return filteredEvents, nil
+	return productAndAccountsEvents, otherEvents, nil
 }
 
 func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, error) {

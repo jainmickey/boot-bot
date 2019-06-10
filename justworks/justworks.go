@@ -15,6 +15,14 @@ import (
 	"github.com/lestrrat-go/ical"
 )
 
+var vacation = "Vacation"
+var workingRemotely = "Working Remotely"
+var workingHome = "Working from Home (Same Timezone"
+var casualLeave = "Casual Leave - Noida Team Only"
+var sickLeave = "Sick Leave"
+var availableTypes = []string{vacation, workingRemotely, casualLeave, sickLeave, workingHome}
+var vacationTypes = []string{vacation, casualLeave, sickLeave}
+
 type Event struct {
 	summary, eventType, name string
 	startDate, endDate       time.Time
@@ -72,10 +80,13 @@ func getNameFromEventSummary(eventSummary string, eventType string) (string, err
 	return strippedMessage, nil
 }
 
-func createPTOText(event Event) (string, error) {
+func createPTOText(event Event, upcoming bool) (string, error) {
 	startDateFormatted := formatDate(event.startDate)
 	endDateFormatted := formatDate(event.endDate)
 	duration := event.endDate.Sub(event.startDate).Hours()
+	if int(duration)%24 == 0 {
+		endDateFormatted = formatDate(event.endDate.Add(-24 * time.Hour))
+	}
 	dateSuffix := fmt.Sprintf("till %s", endDateFormatted)
 	if int(event.endDate.Weekday()) >= 5 && int(duration/24) < 7 {
 		dateSuffix = "and starts again after the weekend."
@@ -85,14 +96,22 @@ func createPTOText(event Event) (string, error) {
 	if int(duration) < 25 {
 		dateMessage = fmt.Sprintf("on %s", startDateFormatted)
 	}
-	message := fmt.Sprintf("- %s %s\n", event.name, dateMessage)
+
+	eventTypeMessage := ""
+	if upcoming == true {
+		eventType := event.eventType
+		if eventType == workingHome {
+			eventType = workingRemotely
+		}
+		eventTypeMessage = fmt.Sprintf(" %s ", eventType)
+	}
+	message := fmt.Sprintf("- %s%s %s\n", event.name, eventTypeMessage, dateMessage)
 	return message, nil
 }
 
 func getEventEmoji(eventType string) (string, error) {
-	emojiesMapping := map[string]string{"Vacation": ":palm_tree:", "Working Remotely": ":house_with_garden:",
-		"Casual Leave - Noida Team Only": ":beach_with_umbrella:", "Sick Leave": ":face_with_thermometer:",
-		"Working from Home (Same Timezone": ":house_with_garden:"}
+	emojiesMapping := map[string]string{vacation: ":palm_tree:", workingRemotely: ":house_with_garden:",
+		casualLeave: ":beach_with_umbrella:", sickLeave: ":face_with_thermometer:", workingHome: ":house_with_garden:"}
 	if val, ok := emojiesMapping[eventType]; ok {
 		return val, nil
 	}
@@ -106,11 +125,15 @@ func CreateEventMessage(sortedEventsList map[string][]Event) (string, error) {
 		fmt.Println("Emoji", key)
 		emoji, err := getEventEmoji(key)
 		if err == nil {
-			message := fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
-			for _, ev := range val {
-				fmt.Println("Event", ev.summary, ev.startDate, ev.endDate)
-				ptoText, _ := createPTOText(ev)
-				message = fmt.Sprintf("%s%s", message, ptoText)
+			message := ""
+			if len(val) > 0 {
+				message = fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
+				for _, ev := range val {
+					fmt.Println("Event", ev.summary, ev.startDate, ev.endDate)
+					// Bool specify its upcoming event or not
+					ptoText, _ := createPTOText(ev, false)
+					message = fmt.Sprintf("%s%s", message, ptoText)
+				}
 			}
 			messaging = fmt.Sprintf("%s%s", messaging, message)
 		}
@@ -118,20 +141,35 @@ func CreateEventMessage(sortedEventsList map[string][]Event) (string, error) {
 	return messaging, nil
 }
 
-func CreateProductAndAccountMessage(sortedEventsList map[string][]Event) (string, error) {
-	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. in Product and Accounts team today:"
+func CreateProductAndAccountMessage(sortedEventsList map[string][]Event, upcoming bool) (string, error) {
+	messaging := "Hey there :wave:, keeping you up to date on who's O.O.O. in *Product and Accounts* team today:"
+	upcomigEvents := true
+	if upcoming == true {
+		messaging = "\n*Upcoming* O.O.O:\n\n"
+		upcomigEvents = false
+	}
 	for key, val := range sortedEventsList {
-		fmt.Println("Emoji", key)
 		emoji, err := getEventEmoji(key)
 		if err == nil {
-			message := fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
+			message := ""
+			if upcoming == false {
+				message = fmt.Sprintf("\n\n%s *%s*:\n\nNo one is on *%s* today!!", emoji, key, key)
+				if len(val) > 0 {
+					message = fmt.Sprintf("\n\n%s *%s* (%d in total):\n\n", emoji, key, len(val))
+				}
+			}
 			for _, ev := range val {
 				fmt.Println("Event", ev.summary, ev.startDate, ev.endDate)
-				ptoText, _ := createPTOText(ev)
+				ptoText, _ := createPTOText(ev, upcoming)
 				message = fmt.Sprintf("%s%s", message, ptoText)
+				upcomigEvents = true
 			}
 			messaging = fmt.Sprintf("%s%s", messaging, message)
 		}
+	}
+	if upcomigEvents == false {
+		messaging = fmt.Sprintf("%s\n\nNothing for the upcoming week yet!!\n", messaging)
+
 	}
 	return messaging, nil
 }
@@ -153,16 +191,23 @@ func setTypeNameOfEvent(events []Event) ([]Event, error) {
 }
 
 func SortCalenderItems(events []Event) (map[string][]Event, error) {
-	sortedEvents := make(map[string][]Event)
-	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only",
-		"Sick Leave", "Working from home (Same Timezone"}
+	sortedEvents := map[string][]Event{
+		vacation:        []Event{},
+		workingRemotely: []Event{},
+		casualLeave:     []Event{},
+		sickLeave:       []Event{},
+	}
 	for _, ev := range events {
 		if len(ev.eventType) > 0 {
 			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
-				if val, ok := sortedEvents[ev.eventType]; ok {
-					sortedEvents[ev.eventType] = append(val, ev)
+				eventType := ev.eventType
+				if eventType == workingHome {
+					eventType = workingRemotely
+				}
+				if val, ok := sortedEvents[eventType]; ok {
+					sortedEvents[eventType] = append(val, ev)
 				} else {
-					sortedEvents[ev.eventType] = []Event{ev}
+					sortedEvents[eventType] = []Event{ev}
 				}
 			}
 		}
@@ -359,12 +404,66 @@ func GetTodaysEvents(envVars map[string]string) ([]Event, error) {
 	return eventsList, nil
 }
 
+func GetUpcomingEvents(envVars map[string]string) ([]Event, error) {
+	var eventsList []Event
+	start := time.Now().UTC()
+	start = start.Add(24 * time.Hour)
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	startAMinuteBefore := start.Add(-1 * time.Minute)
+	daysForUpcoming := time.Duration(7 + (6 - int(start.Weekday())))
+	end := start.Add(daysForUpcoming * 24 * time.Hour)
+
+	p := ical.NewParser()
+	c, err := p.ParseFile("/tmp/justWorksCal.ics")
+	if err != nil {
+		fmt.Println("Error", err)
+		return eventsList, err
+	}
+
+	for e := range c.Entries() {
+		ev, ok := e.(*ical.Event)
+		if !ok {
+			continue
+		}
+
+		layout := "20060102T000000"
+		prop, ok := ev.GetProperty("summary")
+		if !ok {
+			continue
+		}
+		prop2, ok := ev.GetProperty("dtstart")
+		if !ok {
+			continue
+		}
+		prop2Time, err := time.Parse(layout, prop2.RawValue())
+		if err != nil {
+			fmt.Println("Error", err)
+			continue
+		}
+		prop3, ok := ev.GetProperty("dtend")
+		if !ok {
+			continue
+		}
+		prop3Time, err := time.Parse(layout, prop3.RawValue())
+		if err != nil {
+			continue
+		}
+
+		if prop2Time.After(startAMinuteBefore) && prop2Time.Before(end) {
+			event := Event{summary: prop.RawValue(), startDate: prop2Time, endDate: prop3Time}
+			eventsList = append(eventsList, event)
+		}
+	}
+
+	eventsList, _ = setTypeNameOfEvent(eventsList)
+	return eventsList, nil
+}
+
 func FilterEventsForVacation(events []Event) ([]Event, error) {
 	var filteredEventsList []Event
-	availableTypes := []string{"Vacation", "Casual Leave - Noida Team Only", "Sick Leave"}
 	for _, ev := range events {
 		if len(ev.eventType) > 0 {
-			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
+			if sort.SearchStrings(vacationTypes, ev.eventType) <= len(vacationTypes) {
 				filteredEventsList = append(filteredEventsList, ev)
 			}
 		}
@@ -374,8 +473,6 @@ func FilterEventsForVacation(events []Event) ([]Event, error) {
 
 func FilterEventsForVacationAndRemote(events []Event) ([]Event, error) {
 	var filteredEventsList []Event
-	availableTypes := []string{"Vacation", "Working Remotely", "Casual Leave - Noida Team Only",
-		"Sick Leave", "Working from home (Same Timezone"}
 	for _, ev := range events {
 		if len(ev.eventType) > 0 {
 			if sort.SearchStrings(availableTypes, ev.eventType) <= len(availableTypes) {
