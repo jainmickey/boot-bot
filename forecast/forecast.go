@@ -157,7 +157,6 @@ func FilterEventsForProductAndAccountsPeople(forcastPeople []ForecastPerson, eve
 }
 
 func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, error) {
-	fmt.Println("Forecast People")
 	var forcastPeople []ForecastPerson
 
 	peopleURL := fmt.Sprintf("%s/people", envVars["ForeCastApiUrl"])
@@ -170,10 +169,17 @@ func GetPeopleDetailsFromForecast(envVars map[string]string) ([]ForecastPerson, 
 	if err != nil {
 		fmt.Println("Error in fetching Forecast People", err)
 		emailSubject := "Error in Forecast Integration"
-		emailBody := fmt.Sprintf("Forecast token expired: %s", err)
+		emailBody := fmt.Sprintf("Error in fetching data from Forecast: %s", err)
 		ses.SendEmailSMTP(envVars["DefaultFromEmail"], envVars["AdminEmail"], emailSubject, emailBody, envVars)
 		return forcastPeople, nil
 	}
+	if resp.StatusCode == 401 {
+		emailSubject := "Error in Forecast Integration"
+		emailBody := fmt.Sprintf("Forecast token expired: %s", http.StatusText(resp.StatusCode))
+		ses.SendEmailSMTP(envVars["DefaultFromEmail"], envVars["AdminEmail"], emailSubject, emailBody, envVars)
+		return forcastPeople, nil
+	}
+	fmt.Println("Forecast People")
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 	var raw map[string][]map[string]interface{}

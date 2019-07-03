@@ -66,7 +66,9 @@ func weeklySlackMessage(envVars map[string]string) {
 	fmt.Println("Start End", start, end)
 	eventsList, _ := justworks.GetByDateRange(start, end, envVars)
 	eventsList, _ = justworks.FilterEventsForVacationAndRemote(eventsList)
-	sortedEventsList, _ := justworks.SortCalenderItems(eventsList)
+
+	// --- Bool specify its for product accounts people or not and upcoming message or not -----------
+	sortedEventsList, _ := justworks.SortCalenderItems(eventsList, false, false)
 	message, _ := justworks.CreateEventMessage(sortedEventsList)
 	fmt.Println("Final Message", message)
 	slackConn := slacknotifier.New(envVars["SlackWebhookURL"])
@@ -81,10 +83,10 @@ func dailyProductAccountsSlackMessage(envVars map[string]string) {
 	forecastPeople, _ := forecast.GetPeopleDetailsFromForecast(envVars)
 	eventsList, _, _ = forecast.FilterEventsForProductAndAccountsPeople(forecastPeople, eventsList)
 
-	// --------- Upcoming is for whole team ----------------------------------
-	// upcomingEventsList, _, _ = forecast.FilterEventsForProductAndAccountsPeople(forecastPeople, upcomingEventsList)
-	sortedEventsList, _ := justworks.SortCalenderItems(eventsList)
-	upcomingSortedEventsList, _ := justworks.SortCalenderItems(upcomingEventsList)
+	// --------- Upcoming is for whole team ----------------------------------------------------------
+	// --- Bool specify its for product accounts people or not and upcoming message or not -----------
+	sortedEventsList, _ := justworks.SortCalenderItems(eventsList, true, false)
+	upcomingSortedEventsList, _ := justworks.SortCalenderItems(upcomingEventsList, false, true)
 
 	// --------- Bool specify its upcoming message or not -----------------------
 	message, _ := justworks.CreateProductAndAccountMessage(sortedEventsList, false)
@@ -133,6 +135,7 @@ func HandleLambdaEvent() (string, error) {
 	if justworksFileStatus == false {
 		fmt.Println("Error in fetching justworks file: ", err)
 	} else {
+		// ---------- Comment out weekly message code --------------------
 		// if weeklyDuration == 0 || weeklyDuration > 150 {
 		// 	weeklySlackMessage(envVars)
 		// 	globalData.WeeklyRunTime = time.Now()
