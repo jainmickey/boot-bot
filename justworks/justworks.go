@@ -57,7 +57,7 @@ func (ev *Event) setNameInEvent(name string) {
 	ev.name = name
 }
 
-func formatDate(t time.Time, upcoming bool) string {
+func formatDate(t time.Time) string {
 	suffix := "th"
 	switch t.Day() {
 	case 1, 21, 31:
@@ -67,10 +67,8 @@ func formatDate(t time.Time, upcoming bool) string {
 	case 3, 23:
 		suffix = "rd"
 	}
-	if upcoming == true {
-		return t.Format("Mon, 2" + suffix + " January")
-	}
-	return t.Format("Monday, January 2" + suffix)
+	return t.Format("Mon, 2" + suffix + " January")
+	// return t.Format("Monday, January 2" + suffix)
 }
 
 func getNameFromEventSummary(eventSummary string, eventType string) (string, error) {
@@ -95,37 +93,28 @@ func getEventEmoji(eventType string) (string, error) {
 }
 
 func createPTOText(event Event, upcoming bool) (string, error) {
-	startDateFormatted := formatDate(event.startDate, upcoming)
-	endDateFormatted := formatDate(event.endDate, upcoming)
+	startDateFormatted := formatDate(event.startDate)
+	endDateFormatted := formatDate(event.endDate)
 	duration := event.endDate.Sub(event.startDate).Hours()
 	if int(duration)%24 == 0 {
-		endDateFormatted = formatDate(event.endDate.Add(-24*time.Hour), upcoming)
+		endDateFormatted = formatDate(event.endDate.Add(-24 * time.Hour))
 	}
 
-	message := ""
+	dateMessage := fmt.Sprintf("%s ↔︎ %s", startDateFormatted, endDateFormatted)
+	if int(duration) < 25 {
+		dateMessage = fmt.Sprintf("%s", startDateFormatted)
+	}
+
+	message := fmt.Sprintf("- %s - %s\n", event.name, dateMessage)
 	if upcoming == true {
-		dateMessage := fmt.Sprintf("%s <-> %s", startDateFormatted, endDateFormatted)
-		if int(duration) < 25 {
-			dateMessage = fmt.Sprintf("%s", startDateFormatted)
-		}
 		eventType := event.eventType
 		if eventType == workingHome {
 			eventType = workingRemotely
 		}
 		emoji, err := getEventEmoji(eventType)
 		if err == nil {
-			message = fmt.Sprintf("%s [%s] - %s - %s\n", emoji, eventType, event.name, dateMessage)
+			message = fmt.Sprintf("%s %s - %s\n", emoji, event.name, dateMessage)
 		}
-	} else {
-		dateSuffix := fmt.Sprintf("till %s", endDateFormatted)
-		if int(event.endDate.Weekday()) >= 5 && int(duration/24) < 7 {
-			dateSuffix = "and starts again after the weekend."
-		}
-		dateMessage := fmt.Sprintf("from %s %s", startDateFormatted, dateSuffix)
-		if int(duration) < 25 {
-			dateMessage = fmt.Sprintf("on %s", startDateFormatted)
-		}
-		message = fmt.Sprintf("- %s %s\n", event.name, dateMessage)
 	}
 	return message, nil
 }
