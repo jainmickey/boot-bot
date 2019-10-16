@@ -368,6 +368,7 @@ func GetTodaysEvents(envVars map[string]string) ([]Event, error) {
 	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
 	startAMinuteBefore := start.Add(-1 * time.Minute)
 	end := start.Add(24 * time.Hour)
+	endAMinuteBefore := end.Add(-1 * time.Minute)
 
 	p := ical.NewParser()
 	c, err := p.ParseFile("/tmp/justWorksCal.ics")
@@ -405,7 +406,7 @@ func GetTodaysEvents(envVars map[string]string) ([]Event, error) {
 			continue
 		}
 
-		if (prop2Time.After(startAMinuteBefore) && prop2Time.Before(end)) || (prop2Time.Before(startAMinuteBefore) && prop3Time.After(end)) ||
+		if (prop2Time.After(startAMinuteBefore) && prop2Time.Before(end)) || (prop2Time.Before(startAMinuteBefore) && prop3Time.After(endAMinuteBefore)) ||
 			(prop3Time.After(start) && prop3Time.Before(end)) {
 			event := Event{summary: prop.RawValue(), startDate: prop2Time, endDate: prop3Time}
 			eventsList = append(eventsList, event)
