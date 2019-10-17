@@ -72,6 +72,7 @@ func formatDate(t time.Time) string {
 }
 
 func getNameFromEventSummary(eventSummary string, eventType string) (string, error) {
+	fmt.Println("Event Name", eventSummary)
 	reLeadcloseWhtsp := regexp.MustCompile(`^[\s\p{Zs}]+|[\s\p{Zs}]+$`)
 	reInsideWhtsp := regexp.MustCompile(`[\s\p{Zs}]{2,}`)
 	eventTypeString := fmt.Sprintf("(%s)", eventType)
@@ -79,6 +80,8 @@ func getNameFromEventSummary(eventSummary string, eventType string) (string, err
 	strippedMessage = strings.Replace(strippedMessage, eventTypeString, "", -1)
 	strippedMessage = reLeadcloseWhtsp.ReplaceAllString(strippedMessage, "")
 	strippedMessage = reInsideWhtsp.ReplaceAllString(strippedMessage, "")
+	strippedMessage = strings.Replace(strippedMessage, ")", "", -1)
+	fmt.Println("Stripped Event Name", strippedMessage)
 	return strippedMessage, nil
 }
 
